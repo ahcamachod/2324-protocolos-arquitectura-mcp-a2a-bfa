@@ -7,3 +7,11 @@ services:
       - "8080:8000"
     volumes:
       - ./supervisor:/app
+      
+  frontend:
+    build: ./frontend
+    container_name: acbank_frontend
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./frontend:/app
