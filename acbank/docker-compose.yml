@@ -1,0 +1,9 @@
+services:
+
+  supervisor:
+    build: ./supervisor
+    container_name: acbank_supervisor_agents
+    ports:
+      - "8080:8000"
+    volumes:
+      - ./supervisor:/app
