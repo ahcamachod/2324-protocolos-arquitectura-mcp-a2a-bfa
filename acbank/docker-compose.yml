@@ -7,7 +7,7 @@ services:
       - "8080:8000"
     volumes:
       - ./supervisor:/app
-      
+
   frontend:
     build: ./frontend
     container_name: acbank_frontend
@@ -15,3 +15,21 @@ services:
       - "9090:9090"
     volumes:
       - ./frontend:/app
+
+  agente_abrir_cuenta:
+    container_name: agente_abrir_cuenta
+    build:
+      context: ./agents/abrir_cuenta
+    volumes:
+      - ./agents/abrir_cuenta:/app
+    ports:
+      - "8081:8000"
+
+  agente_tarjeta_credito:
+    container_name: agente_tarjeta_credito
+    build:
+      context: ./agents/tarjeta_credito
+    volumes:
+      - ./agents/tarjeta_credito:/app
+    ports:
+      - "8082:8000"

@@ -1,63 +1,61 @@
-from langchain.agents import create_agent
-from langchain_core.messages import HumanMessage
-from langchain.chat_models import init_chat_model
-from dotenv import load_dotenv
+import logging
 import os
+from typing import List
+from dotenv import load_dotenv
+from pydantic import BaseModel, Field
+
+from langchain.chat_models import init_chat_model
+from langchain_core.output_parsers import JsonOutputParser
+
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
 _llm = init_chat_model(
-    model="gpt-4o",
-    api_key=os.getenv("OPENAI_API_KEY"),
-    temperature=0.7
+    model="gpt-4o", # No vamos a profundizar en el modelo que vamos a usar en este momento porque no tenemos un evaluator
+    api_key=os.getenv('OPENAI_API_KEY'),
+    temperature=0
 )
 
-agente_tarjeta_credito = create_agent(
-    _llm,
-    tools=[],
-    system_prompt=("Eres un especialista de crédito del banco ACBank. "
-                   "Ayuda al cliente con sus dudas, solicitudes y límites."
-
+class RouterOutput(BaseModel):
+    agents: List[str] = Field(
+        description="Lista de agentes que deben responder a la solicitud"
     )
-)
 
-agente_abrir_cuenta = create_agent(
-    _llm,
-    tools=[],
-    system_prompt=("Eres un especialista en apertura de cuentas del banco ACBank. "
-                   "Ayuda al cliente a abrir una cuenta y explica los tipos disponibles de cuenta "
-                   "que son cuenta de ahorros y cuenta corriente."
-    )
-)
+parser = JsonOutputParser(pydantic_object=RouterOutput)
 
-def clasificar_pregunta(pregunta:str) -> str:
-    prompt= f"""
-    Clasifica la intención del usuario.
+def clasificar_intencion_usuario(query: str) -> List[dict]:
+    """
+    Clasifique la pregunta y retorne cuáles agentes deben ser llamados.
+    """
 
-    Posibles agentes:
-    tarjeta_credito
+    prompt = f"""
+    Eres el enrutador de agentes de un banco.
+
+    Agentes disponibles:
+
     abrir_cuenta
+    tarjeta_credito
 
-    pregunta: {pregunta}
+    Una pregunta puede requerir más de un agente.
 
-    Responde únicamente con el nombre del agente.   
+    Únicamente responde en formato JSON.
+
+    Pregunta:
+    {query} 
+
+    {parser.get_format_instructions()}    
     """
     respuesta = _llm.invoke(prompt)
-    return str(respuesta.content).strip()
+    resultado = parser.parse(str(respuesta.content))
+    agentes = resultado["agents"]
 
-async def ejecutar_supervisor(texto_usuario:str) -> str:
-    agente = clasificar_pregunta(texto_usuario)
-    if agente == "tarjeta_credito":
-        resultado = agente_tarjeta_credito.invoke(
-            {"messages":[HumanMessage(content=texto_usuario)]}
-        )
-    elif agente == "abrir_cuenta":
-        resultado = agente_abrir_cuenta.invoke(
-            {"messages":[HumanMessage(content=texto_usuario)]}
-        )
-    else:
-        resultado = "No logré entender su solicitud."
+    logger.info(f"Agentes seleccionados: {agentes}")
 
-    mensaje_ia = resultado["messages"][-1]
-
-    return mensaje_ia.content
+    return [
+        {
+            "query": query,
+            "agent":agente
+        }
+        for agente in agentes
+    ]
