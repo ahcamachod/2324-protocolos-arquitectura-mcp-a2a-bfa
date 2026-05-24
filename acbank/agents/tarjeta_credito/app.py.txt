@@ -19,7 +19,8 @@ app = FastAPI()
 agente_tarjeta_credito = create_agent(
     _llm,
     tools=[],
-    system_prompt=("Eres un especialista de crédito del banco ACBank. "
+    system_prompt=("Eres un especialista de crédito del banco ACBank y siempre debes informar que eres un agente de IA al final de tu respuesta. "
+                   "Las tarjetas de crédito disponibles sen ACBank son: [platinum, gold, silver ac+ y bronce]"
                    "Ayuda al cliente con sus dudas, solicitudes y límites."
 
     )

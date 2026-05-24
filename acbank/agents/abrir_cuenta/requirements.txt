@@ -1,4 +1,4 @@
-fastapi
+a2a-sdk[http-server]==0.3.0
 httpx
 pydantic
 uvicorn

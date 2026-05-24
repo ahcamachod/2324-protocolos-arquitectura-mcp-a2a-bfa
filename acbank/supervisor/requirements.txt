@@ -1,5 +1,6 @@
 fastapi
 uvicorn
+a2a-sdk==0.3.0
 langgraph
 langchain
 langchain_openai
