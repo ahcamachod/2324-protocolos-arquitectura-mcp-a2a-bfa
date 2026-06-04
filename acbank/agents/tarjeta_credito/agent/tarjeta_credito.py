@@ -1,31 +1,105 @@
 from dotenv import load_dotenv
 from langchain.agents import create_agent
-from langchain_core.messages import HumanMessage
 from langchain.chat_models import init_chat_model
+from langchain_core.messages import HumanMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.checkpoint.memory import InMemorySaver
 import os
 
 load_dotenv()
 
 _llm = init_chat_model(
-    model="gpt-4o", 
-    api_key=os.getenv('OPENAI_API_KEY'),
-    temperature=0.7
+    model="gpt-4o",
+    api_key=os.getenv("OPENAI_API_KEY"),
+    temperature=0.2,
 )
 
-agente_tarjeta_credito = create_agent(
-    _llm,
-    tools=[],
-    system_prompt=(
-                   "Eres un especialista de crédito del banco ACBank y siempre debes informar que eres un agente de IA al final de tu respuesta. "
-                   "Las tarjetas de crédito disponibles sen ACBank son: [platinum, gold, silver ac+ y bronce]"
-                   "Cuando el cliente solicite una tarjeta del tipo platinum, recomienda los siguientes beneficios: [Hotel, Restaurante, Cashback]. "
-                   "Cuando el cliente informe que quiere una tarjeta platinum, debes informarle que la tarjeta tiene una cuota anual de USD 100 y límite de 10000 USD"
-                   "Ayuda al cliente con sus dudas, solicitudes y límites."
-    )
+client = MultiServerMCPClient(
+    {
+        "cuenta": {
+            "transport": "http",
+            "url": "http://recursos:8000/mcp_gateway",
+        }  # type: ignore
+    }
 )
 
-async def run_agent(mensaje: str):
-    resultado = await agente_tarjeta_credito.ainvoke(
-        {"messages":[HumanMessage(content=mensaje)]}
+memory = InMemorySaver()
+
+agent = None
+
+async def build_tarjeta_agent():
+    tools = await client.get_tools()
+
+    agente_tarjetas = create_agent(
+        _llm,
+        tools=tools,
+        system_prompt=(
+            "Eres especialista en tarjetas de ACBank.\n\n"
+
+            "Tipos disponibles: platinum, gold, silver, ac+\n\n"
+
+            "=============================\n"
+            "REGLAS OBLIGATORIAS (CRÍTICO)\n"
+            "=============================\n"
+            "1. TIENES QUE obligatoriamente llamar la tool consultar_cuenta\n"
+            "2. NO puedes responder sin verificar en el sistema\n"
+            "3. NO puedes asumir si el cliente tiene cuenta\n\n"
+
+            "=============================\n"
+            "FLUJO\n"
+            "=============================\n"
+
+            "PASO 1:\n"
+            "→ Identificar el DNI (usar la memoria si ya lo hay)\n"
+            "→ Si no hay DNI, solicitarlo al cliente\n\n"
+
+            "PASO 2:\n"
+            "→ Llamar consultar_cuenta\n\n"
+
+            "PASO 3:\n"
+            "→ Si existe = False:\n"
+            "   - Informar que no tiene cuenta\n"
+            "   - Ofrecer abrir cuenta\n"
+            "   - NO solicitar tarjeta\n\n"
+
+            "→ Si existe = True:\n"
+            "   - Llamar solicitar_tarjeta\n\n"
+
+            "=============================\n"
+            "REGLAS GENERALES\n"
+            "=============================\n"
+            "- Siempre usa tools\n"
+            "- Nunca inventes datos\n"
+            "- Usa la memoria para recuperar el DNI\n"
+            "- Nunca saltes etapas\n\n"
+
+            "=============================\n"
+            "ERRORES\n"
+            "=============================\n"
+            "- Usa el mensaje de tool\n"
+            "- Explica claramente\n"
+        ),
+        checkpointer=memory,
     )
+
+    return agente_tarjetas
+
+
+async def run_agent(mensaje: str, thread_id: str = "1"):
+    global agent
+    if not agent:
+        agent = await build_tarjeta_agent() #Verifica que el agente ya esté siendo ejecutado en memoria
+    resultado = await agent.ainvoke(
+        {
+            "messages": [
+                HumanMessage(content=mensaje)
+            ]
+        },
+        {
+            "configurable": {
+                "thread_id": thread_id
+            }
+        }
+    )
+
     return resultado["messages"][-1].content
