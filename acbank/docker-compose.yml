@@ -33,3 +33,11 @@ services:
       - ./agents/tarjeta_credito:/app
     ports:
       - "8082:8000"
+  recursos:
+    container_name: recursos
+    build:
+      context: ./recursos
+    volumes:
+      - ./recursos:/app
+    ports:
+      - "8084:8000"
