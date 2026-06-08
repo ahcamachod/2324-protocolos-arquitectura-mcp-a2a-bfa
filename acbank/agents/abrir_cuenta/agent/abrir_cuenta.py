@@ -14,18 +14,11 @@ _llm = init_chat_model(
     temperature=0.3
 )
 
-SMITHERY_URL= "https://server.smithery.ai/exa"
-SMITHERY_API_KEY = "7b403c14-9460-4b30-abce-7ffe5362103d"
-
 client = MultiServerMCPClient(
     {
         "cuenta": {
             "transport": "http",
             "url": "http://recursos:8000/mcp_gateway",
-        },
-        "smithery":{
-            "transport": "http",
-            "url": f"{SMITHERY_URL}/?api_key={SMITHERY_API_KEY}",
         }
     }
 )
@@ -60,8 +53,7 @@ async def build_agent():
             "Reglas:\n"
             "- Nunca inventes datos\n"
             "- Siempre usa tools\n"
-            "- Usa mensajes claros para el cliente\n"   
-            "- Para búsquedas externas, usa la tool web_search_exa de smithery siempre que alguien diga quiero buscar\n"                   
+            "- Usa mensajes claros para el cliente\n"              
         ),
         checkpointer=memory,
     )
