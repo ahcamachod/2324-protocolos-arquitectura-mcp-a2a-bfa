@@ -1,4 +1,6 @@
 import os
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 from fastmcp import FastMCP, Context
 from fastmcp.prompts import Message
 from typing import Optional, Dict, Any
@@ -63,7 +65,6 @@ async def obtener_tarjeta(dni: str):
     dni = dni.strip()
     data = tarjetas_acbank.get(dni, {"error": "Tarjeta no encontrada"})
 
-
 # ---------------------PROMPTS-------------------------- #
 
 @mcp.prompt
@@ -80,13 +81,25 @@ def solicitar_tarjeta_prompt(dni: str, tipo: str):
     return [
         Message(f"El Cliente desea una tarjeta {tipo}"),
         Message(f"dni: {dni}"),
-        Message("Verifique si ya tiene una cuenta antes de emitir la tarjeta.",
+        Message("Verifique se ya tiene una cuenta antes de emitir la tarjeta.",
                 role="assistant"),
     ]
 
-# ---------------------TOOLS-------------------------- #
+# ---------------------TOOLS ENRIQUECIDAS-------------------------- #
 
-@mcp.tool
+@mcp.tool(
+    description="Consulta si un cliente posee cuenta bancaria a partir del DNI",
+    annotations={
+        "tags": ["cuenta", "banco", "consulta", "dni"],
+        "examples": [
+            "consultar cuenta dni 123",
+            "ver si tengo cuenta",
+            "verificar cuenta existente",
+            "buscar cuenta por dni",
+            "¿el cliente tiene cuenta?"
+        ]
+    }
+)
 async def consultar_cuenta(dni: str, ctx: Context):
     resource = await ctx.read_resource(f"cuenta://{dni}")
     print("\n ================================= \n",
@@ -96,8 +109,18 @@ async def consultar_cuenta(dni: str, ctx: Context):
         return {"existe": False}
     return {"existe": True, "cuenta": data}
 
-
-@mcp.tool
+@mcp.tool(
+    description="Consulta si el cliente posee tarjeta de crédito",
+    annotations={
+        "tags": ["tarjeta", "credito", "consulta"],
+        "examples": [
+            "consultar tarjeta dni 123",
+            "ver tarjeta del cliente",
+            "verificar tarjeta existente",
+            "¿el cliente tiene tarjeta?"
+        ]
+    }
+)
 async def consultar_tarjeta(dni: str, ctx: Context):
     resource = await ctx.read_resource(f"tarjeta://{dni}")
     print("\n ================================= \n",
@@ -107,8 +130,19 @@ async def consultar_tarjeta(dni: str, ctx: Context):
         return {"existe": False}
     return {"existe": True, "tarjeta": data}
 
-
-@mcp.tool
+@mcp.tool(
+    description="Crea una cuenta bancaria o retorna una existente",
+    annotations={
+        "tags": ["cuenta", "crear", "banco"],
+        "examples": [
+            "abrir cuenta para juan dni 123",
+            "crear cuenta nueva",
+            "registrar cuenta",
+            "quiero abrir una cuenta",
+            "crear cuenta con dni"
+        ]
+    }
+)
 async def crear_o_buscar_cuenta(nombre: str, dni: str, ctx: Context):
     dni = dni.strip()
     await ctx.info(f"[Cuenta] Processando DNI {dni}")
@@ -134,8 +168,19 @@ async def crear_o_buscar_cuenta(nombre: str, dni: str, ctx: Context):
         "cuenta": cuenta
     }
 
-
-@mcp.tool
+@mcp.tool(
+    description="Solicita la emisión de una tarjeta de crédito para un cliente",
+    annotations={
+        "tags": ["tarjeta", "credito", "emitir"],
+        "examples": [
+            "quiero una tarjeta",
+            "solicitar tarjeta",
+            "emitir tarjeta de crédito",
+            "generar tarjeta platinum",
+            "crear tarjeta para dni 123"
+        ]
+    }
+)
 async def solicitar_tarjeta(dni: str, tipo: str, ctx: Context):
     dni = dni.strip()
     await ctx.info(f"[Tarjeta] Solicitud para el DNI {dni}")
@@ -173,11 +218,92 @@ async def solicitar_tarjeta(dni: str, tipo: str, ctx: Context):
         "tarjeta": tarjeta
     }
 
-
-@mcp.tool
+@mcp.tool(
+    description="Genera un prompt para la apertura de cuenta",
+    annotations={
+        "tags": ["prompt", "cuenta"],
+        "examples": [
+            "generar prompt de apertura de cuenta",
+            "crear mensaje para abrir cuenta"
+        ]
+    }
+)
 async def generar_prompt_apertura(nombre: str, dni: str, ctx: Context):
     prompt = await ctx.get_prompt(
         "abrir_cuenta_prompt",
         {"nombre": nombre, "dni": dni}
     )
     return [m.content for m in prompt.messages]
+
+
+# -------------------- /tools ------------------- #
+
+@mcp.custom_route("/tools", methods=["GET"])
+async def listar_herramientas(request: Request) -> JSONResponse:
+    try:
+        resultado = await mcp.list_tools()
+
+        mapa_esquemas = {
+            "consultar_cuenta": {
+                "type": "object",
+                "properties": {
+                    "dni": {"type": "string", "description": "DNI del cliente"}
+                },
+                "required": ["dni"]
+            },
+            "consultar_tarjeta": {
+                "type": "object",
+                "properties": {
+                    "dni": {"type": "string"}
+                },
+                "required": ["dni"]
+            },
+            "crear_o_buscar_cuenta": {
+                "type": "object",
+                "properties": {
+                    "nombre": {"type": "string"},
+                    "dni": {"type": "string"}
+                },
+                "required": ["nombre", "dni"]
+            },
+            "solicitar_tarjeta": {
+                "type": "object",
+                "properties": {
+                    "dni": {"type": "string"},
+                    "tipo": {"type": "string"}
+                },
+                "required": ["dni", "tipo"]
+            },
+            "generar_prompt_apertura": {
+                "type": "object",
+                "properties": {
+                    "nombre": {"type": "string"},
+                    "dni": {"type": "string"}
+                },
+                "required": ["nombre", "dni"]
+            }
+        }
+
+        herramientas = []
+
+        for herramienta in resultado:
+            anotaciones = getattr(herramienta, "annotations", None)
+
+            herramientas.append({
+                "name": herramienta.name,
+                "description": herramienta.description or "",
+                "inputSchema": mapa_esquemas.get(herramienta.name, {}),
+                "annotations": {
+                    "tags": getattr(anotaciones, "tags", []) if anotaciones else [],
+                    "examples": getattr(anotaciones, "examples", []) if anotaciones else [],
+                }
+            })
+
+        return JSONResponse(herramientas)
+
+    except Exception as e:
+        print("ERROR /tools:", e)
+        return JSONResponse(
+            {"error": "Error al listar herramientas", "details": str(e)},
+            status_code=500
+        )

@@ -56,3 +56,16 @@ services:
       - CHOKIDAR_INTERVAL=1000
       - FAST_REFRESH=true
     command: npm start
+  bfa:
+    container_name: bfa
+    build:
+      context: ./bfa
+    volumes:
+      - ./bfa:/app
+    ports:
+      - "8083:8000"
+    depends_on:
+      - recursos
+      - supervisor
+      - agente_abrir_cuenta
+      - agente_tarjeta_credito
